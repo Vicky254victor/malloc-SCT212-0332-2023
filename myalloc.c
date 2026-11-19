@@ -80,7 +80,7 @@ static block_t *find_fit(size_t need) {
             return b;
     return NULL;
 }
-
+static void split(block_t *b, size_t need);
 void *my_malloc(size_t size) {
     if (size == 0 || size > SIZE_MAX / 2)
         return NULL;
@@ -102,11 +102,46 @@ void *my_malloc(size_t size) {
 
 /* ---- TEMPORARY stubs: each gets replaced by a real version later ---- */
 
-void my_free(void *ptr) {
-    if (ptr != NULL)
-        (void)header(ptr);
+/* ---- Task 5: my_free and coalescing ---- */
+
+static void say_err(const char *msg) {
+    ssize_t r = write(2, msg, strlen(msg));  /* fd 2 = standard error */
+    (void)r;
 }
 
+/* Merge every run of free blocks that touch each other in memory */
+static void coalesce(void) {
+    block_t *b = head;
+    while (b != NULL) {
+        block_t *n = b->next;
+        if (b->free && n != NULL && n->free &&
+            (char *)payload(b) + b->size == (char *)n) {
+            b->size += HDR + n->size;       /* swallow the neighbour */
+            b->next = n->next;              /* unlink it from the list */
+            if (tail == n)
+                tail = b;                   /* we swallowed the last block */
+            /* stay on b: the block after it may be free too */
+        } else {
+            b = b->next;
+        }
+    }
+}
+
+void my_free(void *ptr) {
+    if (ptr == NULL)
+        return;
+    block_t *b = header(ptr);
+    if (b->magic != MAGIC) {
+        say_err("my_free: invalid pointer\n");
+        return;
+    }
+    if (b->free) {
+        say_err("my_free: double free detected\n");
+        return;
+    }
+    b->free = 1;
+    coalesce();
+}
 void *my_calloc(size_t n, size_t size) {
     (void)n;
     (void)size;
