@@ -1,0 +1,3 @@
+test_myalloc
+t_asan
+*.o
