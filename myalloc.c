@@ -94,6 +94,7 @@ void *my_malloc(size_t size) {
         if (b == NULL)
             return NULL;
     }
+    split(b, size);                         /* Task 4: cut off the extra */
     b->free = 0;                            /* mark as in use */
     return payload(b);                      /* give back the user's part */
 }
@@ -131,4 +132,20 @@ void set_policy(fit_policy_t p) {
 
 int heap_check(void) {
     return 1;
+}
+/* Task 4: if block b is much bigger than needed, cut the extra into a new free block */
+static void split(block_t *b, size_t need) {
+    if (b->size < need + HDR + 16)
+        return;                             /* leftover too small: keep whole block */
+
+    block_t *rest = (block_t *)((char *)payload(b) + need);
+    rest->size = b->size - need - HDR;
+    rest->next = b->next;
+    rest->free = 1;
+    rest->magic = MAGIC;
+
+    b->size = need;
+    b->next = rest;
+    if (tail == b)
+        tail = rest;                        /* we split the last block */
 }
