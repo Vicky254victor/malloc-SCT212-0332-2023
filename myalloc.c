@@ -69,3 +69,66 @@ static block_t *grow(size_t need) {
     heap_total += chunk + 16;
     return b;
 }
+
+
+/* ---- Task 3: my_malloc with first-fit ---- */
+
+/* Return the first free block that is big enough, or NULL */
+static block_t *find_fit(size_t need) {
+    for (block_t *b = head; b != NULL; b = b->next)
+        if (b->free && b->size >= need)
+            return b;
+    return NULL;
+}
+
+void *my_malloc(size_t size) {
+    if (size == 0 || size > SIZE_MAX / 2)
+        return NULL;
+    size = align_up(size);
+
+    block_t *b = find_fit(size);
+    if (b == NULL) {                        /* nothing fits: ask the OS */
+        if (grow(size) == NULL)
+            return NULL;
+        b = find_fit(size);
+        if (b == NULL)
+            return NULL;
+    }
+    b->free = 0;                            /* mark as in use */
+    return payload(b);                      /* give back the user's part */
+}
+
+
+/* ---- TEMPORARY stubs: each gets replaced by a real version later ---- */
+
+void my_free(void *ptr) {
+    if (ptr != NULL)
+        (void)header(ptr);
+}
+
+void *my_calloc(size_t n, size_t size) {
+    (void)n;
+    (void)size;
+    return NULL;
+}
+
+void *my_realloc(void *ptr, size_t size) {
+    (void)ptr;
+    (void)size;
+    return NULL;
+}
+
+void heap_stats(heap_stats_t *out) {
+    memset(out, 0, sizeof *out);
+}
+
+void heap_dump(void) {
+}
+
+void set_policy(fit_policy_t p) {
+    (void)p;
+}
+
+int heap_check(void) {
+    return 1;
+}
