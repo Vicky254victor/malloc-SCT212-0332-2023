@@ -142,18 +142,66 @@ void my_free(void *ptr) {
     b->free = 1;
     coalesce();
 }
+
+/* ---- Task 6: my_calloc and my_realloc ---- */
+
 void *my_calloc(size_t n, size_t size) {
-    (void)n;
-    (void)size;
-    return NULL;
+    if (n != 0 && size > SIZE_MAX / n)
+        return NULL;                        /* n * size would overflow */
+    size_t total = n * size;
+    void *p = my_malloc(total);
+    if (p == NULL)
+        return NULL;
+    memset(p, 0, total);
+    return p;
 }
 
 void *my_realloc(void *ptr, size_t size) {
-    (void)ptr;
-    (void)size;
-    return NULL;
-}
+    if (ptr == NULL)
+        return my_malloc(size);             /* acts like malloc */
+    if (size == 0) {
+        my_free(ptr);                       /* acts like free */
+        return NULL;
+    }
+    if (size > SIZE_MAX / 2)
+        return NULL;
 
+    block_t *b = header(ptr);
+    if (b->magic != MAGIC || b->free) {
+        say_err("my_realloc: invalid pointer\n");
+        return NULL;
+    }
+    size_t need = align_up(size);
+
+    /* Case: it already fits. Cut off any unused tail. */
+    if (b->size >= need) {
+        split(b, need);
+        coalesce();
+        return ptr;
+    }
+
+    /* Case: the next block is free, touches us in memory, and is big enough */
+    block_t *n = b->next;
+    if (n != NULL && n->free &&
+        (char *)payload(b) + b->size == (char *)n &&
+        b->size + HDR + n->size >= need) {
+        b->size += HDR + n->size;           /* absorb the neighbour */
+        b->next = n->next;
+        if (tail == n)
+            tail = b;
+        split(b, need);
+        coalesce();
+        return ptr;
+    }
+
+    /* Otherwise: allocate new, copy, free old */
+    void *np = my_malloc(size);
+    if (np == NULL)
+        return NULL;                        /* the old block stays valid */
+    memcpy(np, ptr, b->size < size ? b->size : size);
+    my_free(ptr);
+    return np;
+}
 void heap_stats(heap_stats_t *out) {
     memset(out, 0, sizeof *out);
 }
