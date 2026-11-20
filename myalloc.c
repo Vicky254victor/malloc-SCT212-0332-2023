@@ -73,14 +73,22 @@ static block_t *grow(size_t need) {
 
 /* ---- Task 3: my_malloc with first-fit ---- */
 
-/* Return the first free block that is big enough, or NULL */
-static block_t *find_fit(size_t need) {
-    for (block_t *b = head; b != NULL; b = b->next)
-        if (b->free && b->size >= need)
-            return b;
-    return NULL;
-}
 static void split(block_t *b, size_t need);
+
+static fit_policy_t policy = FIT_FIRST;
+
+static block_t *find_fit(size_t need) {
+    block_t *best = NULL;
+    for (block_t *b = head; b != NULL; b = b->next) {
+        if (!b->free || b->size < need)
+            continue;
+        if (policy == FIT_FIRST)
+            return b;
+        if (best == NULL || b->size < best->size)
+            best = b;
+    }
+    return best;
+}
 void *my_malloc(size_t size) {
     if (size == 0 || size > SIZE_MAX / 2)
         return NULL;
@@ -100,7 +108,6 @@ void *my_malloc(size_t size) {
 }
 
 
-/* ---- TEMPORARY stubs: each gets replaced by a real version later ---- */
 
 /* ---- Task 5: my_free and coalescing ---- */
 
@@ -202,20 +209,9 @@ void *my_realloc(void *ptr, size_t size) {
     my_free(ptr);
     return np;
 }
-void heap_stats(heap_stats_t *out) {
-    memset(out, 0, sizeof *out);
-}
 
-void heap_dump(void) {
-}
 
-void set_policy(fit_policy_t p) {
-    (void)p;
-}
 
-int heap_check(void) {
-    return 1;
-}
 /* Task 4: if block b is much bigger than needed, cut the extra into a new free block */
 static void split(block_t *b, size_t need) {
     if (b->size < need + HDR + 16)
@@ -231,4 +227,63 @@ static void split(block_t *b, size_t need) {
     b->next = rest;
     if (tail == b)
         tail = rest;                        /* we split the last block */
+}
+
+/* ---- Task 7: policy, statistics, dump and check ---- */
+
+void set_policy(fit_policy_t p) {
+    policy = p;
+}
+
+void heap_stats(heap_stats_t *out) {
+    memset(out, 0, sizeof *out);
+    out->heap_bytes = heap_total;
+    for (block_t *b = head; b != NULL; b = b->next) {
+        out->blocks++;
+        if (b->free) {
+            out->free_blocks++;
+            out->free_bytes += b->size;
+            if (b->size > out->largest_free)
+                out->largest_free = b->size;
+        } else {
+            out->used_bytes += b->size;
+        }
+    }
+}
+
+void heap_dump(void) {
+    char buf[128];
+    int i = 0;
+    for (block_t *b = head; b != NULL; b = b->next, i++) {
+        int n = snprintf(buf, sizeof buf, "[%2d] %p size=%zu %s\n",
+                         i, (void *)b, b->size, b->free ? "FREE" : "USED");
+        if (n > 0) {
+            ssize_t r = write(1, buf, (size_t)n);
+            (void)r;
+        }
+    }
+}
+
+int heap_check(void) {
+    for (block_t *b = head; b != NULL; b = b->next) {
+        if (b->magic != MAGIC)
+            return 0;
+        if (b->free != 0 && b->free != 1)
+            return 0;
+        if ((uintptr_t)payload(b) % 16 != 0)
+            return 0;
+        if (b->size % 16 != 0)
+            return 0;
+        block_t *n = b->next;
+        if (n != NULL) {
+            if ((char *)n <= (char *)b)
+                return 0;
+            if ((char *)payload(b) + b->size > (char *)n)
+                return 0;
+            if (b->free && n->free &&
+                (char *)payload(b) + b->size == (char *)n)
+                return 0;
+        }
+    }
+    return 1;
 }
